@@ -1,0 +1,418 @@
+---
+title: "When Borrowers Stop Paying: Analyzing What Drove Fannie Mae Mortgage Defaults in 2007 vs. 2019"
+author: "Malay Patel"
+date: "`r format(Sys.Date(), '%B %d, %Y')`"
+format: html
+output: bookdown::html_document2
+toc_depth: 2
+editor: visual
+---
+
+```{=html}
+<style type="text/css">
+  .title {
+    text-align: left;
+}
+body{
+      font-size: 16px;
+      margin: 2.5cm;
+      top: 1.5cm;
+      text-align: justify;
+  }
+  .caption {
+    font-size: big;
+    text-align: center;
+    position: above;
+}
+p.findings {
+    font-size: 15px;
+    color: #333333;
+    margin-top: 14px;
+    margin-bottom: 24px;
+    text-align: justify;
+    border-left: 3px solid #cccccc;
+    padding-left: 10px;
+}
+</style>
+```
+
+```{css plotly-caption, echo = FALSE}
+div.figure {
+  display: table;
+}
+div.figure p {
+  display: table-caption;
+  caption-side: top;
+}
+```
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(warning = FALSE, message = FALSE)
+```
+
+------------------------------------------------------------------------
+
+## About This Project
+
+This project explores what drove mortgage loan defaults at Fannie Mae by comparing two very different periods in the U.S. housing market: Q4 2007, which coincided with the peak of the financial crisis, and Q4 2019, a stable period just before the COVID-19 pandemic began. The goal was to identify which borrower and loan characteristics were most associated with default, and whether those patterns shifted between the two periods.
+
+The analysis uses loan-level data from Fannie Mae's publicly available Single-Family Loan Performance dataset, along with a quarterly default rate time series built from the same source. All data processing, visualization, and analysis were done in R.
+
+------------------------------------------------------------------------
+
+## Data
+
+Three datasets were used in this project:
+
+**1. data_sample_2007Q4.rds** A random sample of 50,000 fixed-rate, fully amortizing single-family loans with terms of 30 years or less, representing approximately 17% of the full Fannie Mae dataset for Q4 2007. Each loan in this file was either owned or guaranteed by Fannie Mae during that quarter. A default flag was calculated based on the loan's zero balance code: any loan not marked as prepaid or matured, and not left empty, was classified as defaulted.
+
+**2. data_sample_2019Q4.rds** A random sample of 50,000 loans of the same type as the 2007 file, but drawn from Q4 2019 data (approximately 12% of the full dataset for that quarter). This period represents a low-default environment just before the pandemic disrupted the economy.
+
+**3. default_rate_ts.csv** A quarterly time series of default rates from Q1 2000 to Q2 2023, calculated using the complete Fannie Mae dataset rather than the smaller samples. The default rate for each quarter is defined as the number of loans that defaulted divided by the total number of loans active in that quarter.
+
+All three datasets were derived from Fannie Mae's Single-Family Loan Performance Data portal.[^1] A full description of every field in the original data is available in the official Fannie Mae glossary.[^2]
+
+[^1]: Fannie Mae. (2023). *Single-Family Loan Performance Data*. Retrieved from <https://datadynamics.fanniemae.com/data-dynamics/#/reportMenu;category=HP>
+
+[^2]: Fannie Mae. (2023). *Single-Family Loan Performance Dataset and Credit Risk Transfer: Glossary and File Layout*. Retrieved from <https://www.fanniemae.com/media/9066/display>
+
+The key variables used across the analysis are listed below:
+
+| Variable | Description |
+|------------------------------------|------------------------------------|
+| `DEFAULT_FLAG` | 1 = loan defaulted during the quarter, 0 = paid on time |
+| `CSCORE_B` | Borrower FICO credit score at origination |
+| `OLTV` | Original loan-to-value ratio (%) |
+| `DTI` | Debt-to-income ratio at origination (%) |
+| `PURPOSE` | Loan purpose: Purchase (P), Rate/Term Refinance (R), Cash-Out Refinance (C) |
+| `OCC_STAT` | Occupancy status: Primary (P), Second Home (S), Investor (I) |
+
+------------------------------------------------------------------------
+
+## Tools and Packages
+
+The analysis was written entirely in R using R Markdown. The main packages used were:
+
+-   `tidyverse` for data loading, cleaning, and manipulation
+-   `ggplot2` (part of tidyverse) for static charts
+-   `plotly` for the interactive time series chart
+-   `scales` for percentage formatting
+-   `bookdown` for cross-referencing figures in the HTML output
+
+------------------------------------------------------------------------
+
+## Analysis
+
+Mortgage defaults might seem like a dry topic, but they sit right at the center of how Fannie Mae makes or loses money. Fannie Mae buys mortgages from lenders and guarantees the payments to investors. When borrowers stop paying, Fannie Mae takes the hit. That exposure became a serious problem in 2007 and 2008, when a wave of defaults wiped out enough capital that the U.S. government had to place Fannie Mae under conservatorship and inject roughly \$116 billion into the company to keep it afloat.[^3] This raises an important question that is still relevant today: what was actually different about the loans that defaulted? And had anything changed by 2019, when defaults were at near-historic lows? This analysis looks at those two quarters side by side using data visualization to try to answer that question.
+
+[^3]: Federal Housing Finance Agency. (2012). *Report to Congress 2011*. Washington, D.C.: FHFA. Retrieved from <https://www.fhfa.gov/AboutUs/Reports/ReportDocuments/FHFA_2011AnnualReport.pdf>
+
+Looking at the full timeline in Figure \@ref(fig:fig-ts) first helps set the scene. The default rate spent most of the early 2000s between 1% and 2%, then started climbing in 2005 and 2006 before peaking sharply at 9.1% in Q4 2007. After that, it fell just as quickly and by 2012 was already back under 0.5%. In 2019 Q4, it was essentially zero. The two sample datasets sit at opposite ends of this curve, which makes them a good comparison for understanding what was going on inside the portfolio during a crisis versus a stable period.
+
+Credit scores at origination turned out to be one of the clearest dividing lines between borrowers who defaulted and those who did not. Figure \@ref(fig:fig-cscore) shows that in 2007, quite a few loans were given to borrowers with FICO scores below 700. By 2019, that lower tail had largely disappeared, with most loans going to borrowers above 720. Figure \@ref(fig:fig-cscore-default) makes this even more concrete: in 2007, borrowers with scores below 620 defaulted at over 25%, while those above 780 defaulted at under 2%. That is a huge gap within the same origination year. In 2019, the same pattern exists but at much lower levels, partly because almost no one with a very low score was getting approved in the first place.
+
+Loan purpose also mattered quite a bit. As shown in Figure \@ref(fig:fig-purpose), cash-out refinances had the highest default rates in 2007, coming in roughly double those of purchase loans. When a borrower pulls cash out of a property, they end up owing more on a home that is now worth less if prices drop. That leaves very little room to maneuver if anything goes wrong financially. Purchase loans, on the other hand, require a down payment, which means the borrower has something to lose from the start. By 2019, the differences between loan purposes were minimal, though cash-out refinances were still slightly higher.
+
+The type of property and how it was being used also played a role. Figure \@ref(fig:fig-occ) shows that investor-owned properties defaulted at nearly twice the rate of primary residences in 2007. Someone living in a home will do a lot to avoid losing it. An investor who bought a property expecting prices to keep going up has much less personal attachment, and if the investment turns bad, walking away becomes more rational. By 2019, this gap had narrowed considerably, but investor loans were still the riskiest of the three categories.
+
+Finally, Figure \@ref(fig:fig-ltv-dti) puts two leverage measures together: the original loan-to-value ratio and the debt-to-income ratio. In 2007, the defaulted loans are clearly concentrated in the upper right part of the chart, where both ratios are high. A borrower with a high LTV and high DTI has very little financial cushion. If their income drops even a little, or if the home value falls below what they owe, they are in trouble. The 2019 panel has far fewer defaults overall and no obvious clustering pattern, which reflects how much loan quality improved after the crisis.
+
+Taken together, the findings point to a fairly consistent story. The loans that defaulted in 2007 tended to share several characteristics: lower credit scores, higher leverage, investor-owned properties, and cash-out refinancing. Each of those risk factors was more common in 2007 than in 2019, and post-crisis underwriting reforms addressed most of them. For anyone trying to assess mortgage portfolio risk going forward, keeping track of how these variables shift over time, especially if LTV and DTI start climbing again as home prices rise, is probably the most practical takeaway from this analysis.
+
+------------------------------------------------------------------------
+
+## Figure Appendix {.unnumbered}
+
+```{r load-data, include = FALSE}
+library(tidyverse)
+library(plotly)
+library(scales)
+
+# Load datasets
+df07 <- read_rds("data_sample_2007Q4.rds")
+df19 <- read_rds("data_sample_2019Q4.rds")
+ts   <- read_csv("default_rate_ts.csv") |>
+  select(Date = 1, Default_rate = 2) |>
+  mutate(Date = as.Date(Date, format = "%m/%d/%Y"))
+
+# Period labels
+df07   <- df07 |> mutate(Period = "2007 Q4")
+df19   <- df19 |> mutate(Period = "2019 Q4")
+df_all <- bind_rows(df07, df19)
+
+# Shared color palette
+col_2007    <- "#C0392B"
+col_2019    <- "#2980B9"
+col_default <- "#E74C3C"
+col_perform <- "#27AE60"
+
+# Shared ggplot theme
+theme_report <- theme_minimal(base_size = 13) +
+  theme(
+    plot.title       = element_blank(),
+    axis.title       = element_text(size = 12),
+    legend.title     = element_text(size = 12),
+    legend.position  = "bottom",
+    panel.grid.minor = element_blank(),
+    strip.text       = element_text(size = 12, face = "bold")
+  )
+```
+
+```{r fig-ts, echo = FALSE, fig.width = 10, fig.height = 4.5, fig.cap = "**Figure 1. Quarterly Default Rate for Fannie Mae Single-Family Fixed-Rate Loans, Q1 2000 to Q2 2023** *(Interactive: hover over any data point to see the exact default rate for that quarter)*"}
+
+annotations_ts <- list(
+  list(
+    x = as.Date("2007-10-01"), y = 0.0913,
+    text = "Peak: 9.1%<br>Q4 2007",
+    showarrow = TRUE, arrowhead = 2, ax = 55, ay = -40,
+    font = list(size = 11, color = col_2007)
+  ),
+  list(
+    x = as.Date("2019-10-01"), y = 0.0023,
+    text = "2019 Q4<br>pre-COVID",
+    showarrow = TRUE, arrowhead = 2, ax = -65, ay = -35,
+    font = list(size = 11, color = col_2019)
+  )
+)
+
+plot_ly(
+  data = ts,
+  x    = ~Date,
+  y    = ~Default_rate,
+  type = "scatter",
+  mode = "lines+markers",
+  line   = list(color = "#2C3E50", width = 2.5),
+  marker = list(color = "#2C3E50", size = 5),
+  hovertemplate = "<b>%{x|%b %Y}</b><br>Default Rate: %{y:.2%}<extra></extra>"
+) |>
+  layout(
+    xaxis = list(title = "Quarter", showgrid = FALSE),
+    yaxis = list(
+      title      = "Default Rate",
+      tickformat = ".1%",
+      showgrid   = TRUE,
+      gridcolor  = "#ECF0F1"
+    ),
+    annotations   = annotations_ts,
+    plot_bgcolor  = "white",
+    paper_bgcolor = "white",
+    hovermode     = "x unified"
+  )
+```
+
+<p class="findings">
+
+The default rate rose steadily from the early 2000s before hitting a peak of 9.1% in Q4 2007, then dropped sharply as underwriting standards tightened after the financial crisis. By 2019, the rate had fallen to nearly zero. The two sample datasets used in this project sit at opposite ends of this curve, making them a useful pair for understanding what a high-risk versus a low-risk mortgage portfolio actually looks like.
+
+</p>
+
+<br>
+
+```{r fig-cscore, echo = FALSE, fig.width = 10, fig.height = 4.5, fig.cap = "**Figure 2. Distribution of Borrower FICO Credit Scores at Origination, 2007 Q4 vs. 2019 Q4**"}
+
+df_cscore <- df_all |>
+  filter(!is.na(CSCORE_B)) |>
+  mutate(Period = factor(Period, levels = c("2007 Q4", "2019 Q4")))
+
+ggplot(df_cscore, aes(x = CSCORE_B, fill = Period)) +
+  geom_histogram(
+    aes(y = after_stat(density)),
+    binwidth = 20, alpha = 0.78,
+    position = "identity", color = "white"
+  ) +
+  geom_vline(xintercept = 700, linetype = "dashed",
+             color = "gray35", linewidth = 0.7) +
+  annotate("text", x = 693, y = Inf,
+           label = "700", vjust = 1.6, hjust = 1.1,
+           size = 3.5, color = "gray35") +
+  scale_fill_manual(
+    values = c("2007 Q4" = col_2007, "2019 Q4" = col_2019),
+    name   = "Period"
+  ) +
+  scale_x_continuous(breaks = seq(500, 850, 50)) +
+  labs(x = "Borrower FICO Score at Origination", y = "Density") +
+  facet_wrap(~Period, ncol = 2) +
+  theme_report +
+  theme(legend.position = "none")
+```
+
+<p class="findings">
+
+In 2007, a noticeable share of loans went to borrowers with FICO scores below 700, with the distribution spread fairly wide. By 2019, the distribution had shifted to the right and tightened considerably, with very few loans going to borrowers below that threshold. This reflects the stricter lending standards that took hold after the financial crisis and helps explain why default rates were so much lower in 2019.
+
+</p>
+
+<br>
+
+```{r fig-cscore-default, echo = FALSE, fig.width = 10, fig.height = 4.5, fig.cap = "**Figure 3. Default Rates by FICO Score Band, 2007 Q4 vs. 2019 Q4**"}
+
+df_band <- df_all |>
+  filter(!is.na(CSCORE_B)) |>
+  mutate(
+    Score_Band = cut(
+      CSCORE_B,
+      breaks = c(0, 620, 660, 700, 740, 780, 850),
+      labels = c("<620", "620-659", "660-699", "700-739", "740-779", "780+"),
+      right  = FALSE
+    ),
+    Period = factor(Period, levels = c("2007 Q4", "2019 Q4"))
+  ) |>
+  filter(!is.na(Score_Band)) |>
+  group_by(Period, Score_Band) |>
+  summarise(Default_Rate = mean(DEFAULT_FLAG, na.rm = TRUE), .groups = "drop")
+
+ggplot(df_band, aes(x = Score_Band, y = Default_Rate, fill = Period)) +
+  geom_col(position = position_dodge(width = 0.72), width = 0.65, alpha = 0.85) +
+  geom_text(
+    aes(label = percent(Default_Rate, accuracy = 0.1)),
+    position = position_dodge(width = 0.72),
+    vjust = -0.45, size = 3.2
+  ) +
+  scale_fill_manual(
+    values = c("2007 Q4" = col_2007, "2019 Q4" = col_2019), name = "Period"
+  ) +
+  scale_y_continuous(
+    labels = percent_format(accuracy = 1),
+    expand = expansion(mult = c(0, 0.18))
+  ) +
+  labs(x = "FICO Score Band", y = "Default Rate") +
+  theme_report
+```
+
+<p class="findings">
+
+In 2007, borrowers with scores below 620 defaulted at over 25%, while those above 780 defaulted at under 2%. That more than tenfold gap within the same origination year shows how much credit score mattered as a predictor of loan performance during the crisis. In 2019, the same general pattern holds but at much lower rates across every band, partly because fewer risky borrowers were getting approved at all.
+
+</p>
+
+<br>
+
+```{r fig-purpose, echo = FALSE, fig.width = 10, fig.height = 4.5, fig.cap = "**Figure 4. Default Rates by Loan Purpose, 2007 Q4 vs. 2019 Q4**"}
+
+purpose_labels <- c(
+  "C" = "Cash-Out\nRefinance",
+  "P" = "Purchase",
+  "R" = "Rate/Term\nRefinance"
+)
+
+df_purp <- df_all |>
+  filter(PURPOSE %in% c("C", "P", "R")) |>
+  group_by(Period, PURPOSE) |>
+  summarise(Default_Rate = mean(DEFAULT_FLAG, na.rm = TRUE), .groups = "drop") |>
+  mutate(
+    Purpose = recode(PURPOSE, !!!purpose_labels),
+    Period  = factor(Period, levels = c("2007 Q4", "2019 Q4"))
+  )
+
+ggplot(df_purp, aes(x = Purpose, y = Default_Rate, fill = Period)) +
+  geom_col(position = position_dodge(width = 0.72), width = 0.65, alpha = 0.85) +
+  geom_text(
+    aes(label = percent(Default_Rate, accuracy = 0.1)),
+    position = position_dodge(width = 0.72),
+    vjust = -0.45, size = 3.5
+  ) +
+  scale_fill_manual(
+    values = c("2007 Q4" = col_2007, "2019 Q4" = col_2019), name = "Period"
+  ) +
+  scale_y_continuous(
+    labels = percent_format(accuracy = 1),
+    expand = expansion(mult = c(0, 0.18))
+  ) +
+  labs(x = "Loan Purpose", y = "Default Rate") +
+  theme_report
+```
+
+<p class="findings">
+
+Cash-out refinances had the highest default rates in 2007, roughly double those of purchase loans. Borrowers who took cash out were left with higher balances and less protection when home values fell. Purchase loans, which require a down payment, gave borrowers more of a financial stake and a stronger reason to keep making payments. By 2019, the differences across loan types were small, though cash-out refinances still came in slightly higher than the others.
+
+</p>
+
+<br>
+
+```{r fig-occ, echo = FALSE, fig.width = 10, fig.height = 4.5, fig.cap = "**Figure 5. Default Rates by Property Occupancy Status, 2007 Q4 vs. 2019 Q4**"}
+
+occ_labels <- c("I" = "Investor", "P" = "Primary\nResidence", "S" = "Second Home")
+
+df_occ <- df_all |>
+  filter(OCC_STAT %in% c("I", "P", "S")) |>
+  group_by(Period, OCC_STAT) |>
+  summarise(Default_Rate = mean(DEFAULT_FLAG, na.rm = TRUE), .groups = "drop") |>
+  mutate(
+    Occupancy = recode(OCC_STAT, !!!occ_labels),
+    Period    = factor(Period, levels = c("2007 Q4", "2019 Q4"))
+  )
+
+ggplot(df_occ, aes(x = Occupancy, y = Default_Rate, fill = Period)) +
+  geom_col(position = position_dodge(width = 0.72), width = 0.65, alpha = 0.85) +
+  geom_text(
+    aes(label = percent(Default_Rate, accuracy = 0.1)),
+    position = position_dodge(width = 0.72),
+    vjust = -0.45, size = 3.5
+  ) +
+  scale_fill_manual(
+    values = c("2007 Q4" = col_2007, "2019 Q4" = col_2019), name = "Period"
+  ) +
+  scale_y_continuous(
+    labels = percent_format(accuracy = 1),
+    expand = expansion(mult = c(0, 0.18))
+  ) +
+  labs(x = "Property Occupancy Status", y = "Default Rate") +
+  theme_report
+```
+
+<p class="findings">
+
+Investor-owned properties had default rates nearly twice as high as primary residences in 2007. Homeowners have a personal stake in keeping their home, which makes them more motivated to stay current even when finances get tight. Investors holding properties purely for financial return are more likely to walk away when the numbers no longer work. In 2019, the gap between categories narrowed but the same relative ordering held, suggesting this is a consistent feature of mortgage risk rather than something specific to the crisis period.
+
+</p>
+
+<br>
+
+```{r fig-ltv-dti, echo = FALSE, fig.width = 10, fig.height = 5.2, fig.cap = "**Figure 6. Original LTV Ratio vs. Debt-to-Income Ratio by Default Status, 2007 Q4 vs. 2019 Q4** *(Dashed lines mark the 80% LTV and 43% DTI thresholds commonly referenced in underwriting guidelines)*"}
+
+set.seed(42)
+df_scat <- df_all |>
+  filter(!is.na(OLTV), !is.na(DTI), DTI > 0, DTI < 65, OLTV > 0, OLTV <= 100) |>
+  mutate(
+    Status = if_else(DEFAULT_FLAG == 1, "Defaulted", "Performing"),
+    Period = factor(Period, levels = c("2007 Q4", "2019 Q4"))
+  ) |>
+  group_by(Period, Status) |>
+  slice_sample(n = 1500) |>
+  ungroup()
+
+ggplot(df_scat, aes(x = OLTV, y = DTI, color = Status)) +
+  geom_point(alpha = 0.32, size = 1.3) +
+  geom_vline(xintercept = 80, linetype = "dashed", color = "gray45", linewidth = 0.6) +
+  geom_hline(yintercept = 43, linetype = "dashed", color = "gray45", linewidth = 0.6) +
+  scale_color_manual(
+    values = c("Defaulted" = col_default, "Performing" = col_perform),
+    name   = "Loan Status"
+  ) +
+  scale_x_continuous(breaks = seq(0, 100, 20)) +
+  labs(x = "Original LTV Ratio (%)", y = "Debt-to-Income Ratio (%)") +
+  facet_wrap(~Period, ncol = 2) +
+  theme_report +
+  guides(color = guide_legend(override.aes = list(size = 3.5, alpha = 0.9)))
+```
+
+<p class="findings">
+
+In 2007, defaulted loans cluster noticeably in the upper-right area of the chart, where both LTV and DTI are high. A borrower in that position has very little financial room: they owe a lot relative to what their home is worth, and they are already stretched thin on income. That combination makes it hard to survive any financial disruption and leaves the lender with limited recovery options if the loan does go bad. The 2019 panel has far fewer defaults and no clear clustering pattern, reflecting the broad improvement in loan quality that followed the crisis.
+
+</p>
+
+<br>
+
+------------------------------------------------------------------------
+
+## References {.unnumbered}
+
+Fannie Mae. (2023). *Single-Family Loan Performance Data* [Dataset]. Fannie Mae Data Dynamics Portal. <https://datadynamics.fanniemae.com/data-dynamics/#/reportMenu;category=HP>
+
+Fannie Mae. (2023). *Single-Family Loan Performance Dataset and Credit Risk Transfer: Glossary and File Layout*. <https://www.fanniemae.com/media/9066/display>
+
+Fannie Mae. (2023). *Fannie Mae Statistical Summary Tables: October 2023*. <https://www.fanniemae.com/research-and-insights/business-data>
+
+Federal Housing Finance Agency. (2012). *Report to Congress 2011*. Washington, D.C.: FHFA. <https://www.fhfa.gov/AboutUs/Reports/ReportDocuments/FHFA_2011AnnualReport.pdf>
