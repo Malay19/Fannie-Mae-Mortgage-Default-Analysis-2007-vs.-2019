@@ -1,6 +1,6 @@
 # Fannie Mae Mortgage Default Analysis: 2007 vs. 2019
 
-This project explores what drove mortgage loan defaults at Fannie Mae by comparing two very different periods in the U.S. housing market — Q4 2007, the peak of the financial crisis, and Q4 2019, a stable period just before COVID-19. The goal was to identify which borrower and loan characteristics were most associated with default, and whether those patterns shifted between the two periods.
+This project explores what drove mortgage loan defaults at Fannie Mae by comparing two very different periods in the U.S. housing market -- Q4 2007, the peak of the financial crisis, and Q4 2019, a stable period just before COVID-19. The goal was to identify which borrower and loan characteristics were most associated with default, and whether those patterns shifted between the two periods.
 
 All analysis was done in R using ggplot2, plotly, and the tidyverse.
 
